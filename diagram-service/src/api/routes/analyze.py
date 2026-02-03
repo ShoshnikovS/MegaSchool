@@ -1,13 +1,27 @@
-from fastapi import APIRouter, File, UploadFile, HTTPException
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, File, UploadFile
 import time
-import base64
 
 from src.core.logger import app_logger
 from src.core.exceptions import ImageProcessingError, ValidationError
-from src.api.models.responses import UnifiedResponse, GraphRepresentation, Artifacts
+from src.api.models.responses import UnifiedResponse
+from src.utils.image_utils import bytes_to_numpy
+from src.preprocessing.image_preprocessor import ImagePreprocessor
+from src.ml_pipeline.detector import DiagramDetector
+from src.ml_pipeline.ocr import TextRecognizer
+from src.ml_pipeline.graph_constructor import GraphConstructor
+from src.ml_pipeline.semantic_interpreter import SemanticInterpreter
+from src.postprocessing.formatter import ResponseFormatter
+from src.postprocessing.template_engine import TemplateEngine
 
 router = APIRouter()
+
+preprocessor = ImagePreprocessor()
+detector = DiagramDetector()
+ocr = TextRecognizer()
+graph_constructor = GraphConstructor()
+semantic_interpreter = SemanticInterpreter()
+formatter = ResponseFormatter()
+template_engine = TemplateEngine()
 
 
 @router.post("/analyze", response_model=UnifiedResponse)
@@ -33,77 +47,42 @@ async def analyze_diagram(image: UploadFile = File(...)):
         
         app_logger.info(f"Image size: {len(image_bytes)} bytes")
         
-        graph_representation = GraphRepresentation(
-            nodes=[
-                {
-                    "id": "node_1",
-                    "type": "start",
-                    "label": "Начало",
-                    "position": [100, 50]
-                },
-                {
-                    "id": "node_2",
-                    "type": "process",
-                    "label": "Обработка данных",
-                    "position": [100, 150]
-                },
-                {
-                    "id": "node_3",
-                    "type": "decision",
-                    "label": "Условие выполнено?",
-                    "position": [100, 250]
-                },
-                {
-                    "id": "node_4",
-                    "type": "process",
-                    "label": "Действие A",
-                    "position": [50, 350]
-                },
-                {
-                    "id": "node_5",
-                    "type": "process",
-                    "label": "Действие B",
-                    "position": [150, 350]
-                },
-                {
-                    "id": "node_6",
-                    "type": "end",
-                    "label": "Конец",
-                    "position": [100, 450]
-                }
-            ],
-            edges=[
-                {"source": "node_1", "target": "node_2", "label": None},
-                {"source": "node_2", "target": "node_3", "label": None},
-                {"source": "node_3", "target": "node_4", "label": "Да"},
-                {"source": "node_3", "target": "node_5", "label": "Нет"},
-                {"source": "node_4", "target": "node_6", "label": None},
-                {"source": "node_5", "target": "node_6", "label": None}
-            ]
-        )
+        image_array = bytes_to_numpy(image_bytes)
+        app_logger.debug(f"Converted to numpy array: {image_array.shape}")
         
-        description = (
-            "Алгоритм начинается с начального узла. "
-            "Затем выполняется обработка данных. "
-            "После обработки проверяется условие. "
-            "Если условие выполнено (Да), выполняется действие A. "
-            "Если условие не выполнено (Нет), выполняется действие B. "
-            "После выполнения одного из действий алгоритм завершается."
-        )
+        preprocessed_image = preprocessor.preprocess(image_array, enhance=True, denoise=False)
+        app_logger.info("Image preprocessed")
+        
+        bboxes = detector.detect_diagram_elements(preprocessed_image)
+        app_logger.info(f"Detected {len(bboxes)} diagram elements")
+        
+        texts = ocr.recognize_in_bboxes(preprocessed_image, bboxes)
+        app_logger.info(f"Recognized text in {len(texts)} bounding boxes")
+        
+        graph = graph_constructor.construct_with_flow_analysis(bboxes, texts)
+        app_logger.info(f"Constructed graph: {graph.number_of_nodes()} nodes, {graph.number_of_edges()} edges")
+        
+        interpretation = semantic_interpreter.interpret(graph)
+        app_logger.info("Graph interpreted")
+        
+        description = template_engine.render_description(graph)
+        app_logger.info("Description generated")
         
         processing_time = time.time() - start_time
         
-        response = UnifiedResponse(
-            task_type="image_to_text",
+        response = formatter.format_analyze_response(
+            graph=graph,
             description=description,
-            graph_representation=graph_representation,
-            artifacts=Artifacts(),
-            processing_time_sec=round(processing_time, 2),
+            processing_time=processing_time,
             metadata={
                 "image_filename": image.filename,
-                "image_size_bytes": len(image_bytes)
+                "image_size_bytes": len(image_bytes),
+                "num_detected_elements": len(bboxes),
+                "flow_type": interpretation.get('flow_type', 'unknown')
             }
         )
+        
+        response = formatter.add_detected_elements(response, bboxes, texts)
         
         app_logger.info(f"Analysis completed in {processing_time:.2f}s")
         

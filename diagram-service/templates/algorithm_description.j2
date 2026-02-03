@@ -1,0 +1,29 @@
+{% if start_nodes %}
+Алгоритм начинается{% if start_nodes[0].label %}: {{ start_nodes[0].label }}{% endif %}.
+{% endif %}
+
+{% if process_nodes %}
+Последовательность выполнения:
+{% for node in process_nodes %}
+{{ loop.index }}. {{ node.label if node.label else 'Шаг ' ~ loop.index }}
+{% endfor %}
+{% endif %}
+
+{% if decision_nodes %}
+Алгоритм содержит {{ decision_nodes|length }} условны{% if decision_nodes|length == 1 %}е ветвление{% else %}х ветвлений{% endif %}:
+{% for node in decision_nodes %}
+- Проверка условия: {{ node.label if node.label else 'Условие ' ~ loop.index }}
+{% endfor %}
+{% endif %}
+
+{% if end_nodes %}
+Алгоритм завершается{% if end_nodes[0].label %}: {{ end_nodes[0].label }}{% endif %}.
+{% endif %}
+
+{% if has_branches %}
+Граф алгоритма содержит ветвления, что указывает на наличие условной логики.
+{% else %}
+Алгоритм выполняется последовательно без ветвлений.
+{% endif %}
+
+Всего узлов: {{ num_nodes }}, связей: {{ num_edges }}.
