@@ -8,33 +8,28 @@ ENV PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
     PIP_DISABLE_PIP_VERSION_CHECK=1 \
     POETRY_VERSION=1.7.1 \
-    POETRY_HOME="/opt/poetry" \
     POETRY_NO_INTERACTION=1 \
     POETRY_VIRTUALENVS_CREATE=false
-
-ENV PATH="$POETRY_HOME/bin:$PATH"
 
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     curl \
-    git \
     libglib2.0-0 \
     libsm6 \
     libxext6 \
     libxrender-dev \
     libgomp1 \
-    libgl1-mesa-glx \
-    graphviz \
-    graphviz-dev \
+    libgl1 \
+    ffmpeg \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-RUN curl -sSL https://install.python-poetry.org | python3 - && \
-    chmod +x $POETRY_HOME/bin/poetry
+RUN pip install --no-cache-dir poetry==$POETRY_VERSION
 
-COPY pyproject.toml ./
-RUN poetry install --no-root --only main
+COPY pyproject.toml poetry.lock* ./
+RUN poetry install --no-root --no-dev --no-interaction --no-ansi
 
 COPY . .
 

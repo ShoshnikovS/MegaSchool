@@ -1,13 +1,15 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
 from contextlib import asynccontextmanager
 import time
+from pathlib import Path
 
 from src.core.config import settings
 from src.core.logger import app_logger
 from src.core.exceptions import DiagramServiceException
-from src.api.routes import analyze, generate
+from src.api.routes import analyze, generate, mock_data
 from src.api.models.responses import HealthResponse, ErrorResponse
 
 
@@ -39,6 +41,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+static_dir = Path(__file__).parent.parent.parent / "static"
+if static_dir.exists():
+    app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
 
 @app.middleware("http")
@@ -96,6 +102,11 @@ async def health_check():
 
 @app.get("/", tags=["Root"])
 async def root():
+    from fastapi.responses import FileResponse
+    static_dir = Path(__file__).parent.parent.parent / "static"
+    index_path = static_dir / "index.html"
+    if index_path.exists():
+        return FileResponse(str(index_path))
     return {
         "service": settings.app_name,
         "version": settings.app_version,
@@ -106,3 +117,4 @@ async def root():
 
 app.include_router(analyze.router, prefix=settings.api_prefix, tags=["Analyze"])
 app.include_router(generate.router, prefix=settings.api_prefix, tags=["Generate"])
+app.include_router(mock_data.router, prefix=settings.api_prefix, tags=["Mock Demo"])

@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Diagram Service - ML сервис для диаграмм</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+
+        .header h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .header p {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .tab {
+            flex: 1;
+            padding: 15px;
+            background: white;
+            border: none;
+            border-radius: 10px;
+            font-size: 1.1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .tab:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+
+        .tab.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .tab-content {
+            display: none;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        .upload-area {
+            border: 3px dashed #667eea;
+            border-radius: 10px;
+            padding: 60px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+
+        .upload-area:hover {
+            border-color: #764ba2;
+            background: #f8f9ff;
+        }
+
+        .upload-area.dragover {
+            background: #e8ebff;
+            border-color: #764ba2;
+        }
+
+        .upload-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 15px 40px;
+            font-size: 1.1em;
+            font-weight: 600;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .preview-image {
+            max-width: 100%;
+            max-height: 400px;
+            border-radius: 10px;
+            margin: 20px 0;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .results {
+            margin-top: 30px;
+        }
+
+        .result-section {
+            background: #f8f9ff;
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .result-section h3 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+        }
+
+        .graph-visualization {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            margin-top: 15px;
+        }
+
+        .node {
+            background: #667eea;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            margin: 10px;
+            display: inline-block;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .edge {
+            color: #764ba2;
+            font-weight: 600;
+            margin: 0 10px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 40px;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .textarea-input {
+            width: 100%;
+            min-height: 150px;
+            padding: 15px;
+            border: 2px solid #e0e0e0;
+            border-radius: 10px;
+            font-size: 1em;
+            font-family: inherit;
+            resize: vertical;
+            margin-bottom: 20px;
+        }
+
+        .textarea-input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .option-group {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .option-group label {
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #333;
+        }
+
+        .option-group select {
+            padding: 10px;
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+        }
+
+        .option-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .generated-image {
+            max-width: 100%;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin: 20px 0;
+        }
+
+        .code-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 20px;
+            border-radius: 10px;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            margin: 15px 0;
+        }
+
+        .error {
+            background: #fee;
+            border: 2px solid #fcc;
+            color: #c33;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+
+        .success {
+            background: #efe;
+            border: 2px solid #cfc;
+            color: #3c3;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 20px 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎨 Diagram Service</h1>
+            <p>ML-сервис для двухстороннего преобразования диаграмм</p>
+        </div>
+
+        <div class="tabs">
+            <button class="tab active" onclick="switchTab('analyze')">📊 Анализ диаграммы</button>
+            <button class="tab" onclick="switchTab('generate')">🎯 Генерация диаграммы</button>
+        </div>
+
+        <!-- Анализ диаграммы -->
+        <div id="analyze-tab" class="tab-content active">
+            <h2 style="margin-bottom: 20px;">Загрузите изображение диаграммы</h2>
+            
+            <div class="upload-area" id="uploadArea" onclick="document.getElementById('fileInput').click()">
+                <div class="upload-icon">📤</div>
+                <h3>Перетащите изображение сюда или нажмите для выбора</h3>
+                <p style="margin-top: 10px; color: #666;">Поддерживаются форматы: PNG, JPG, JPEG (макс. 10 MB)</p>
+            </div>
+            
+            <input type="file" id="fileInput" accept="image/*" style="display: none;" onchange="handleFileSelect(event)">
+            
+            <div id="imagePreview" style="display: none; text-align: center;">
+                <img id="previewImg" class="preview-image" alt="Preview">
+                <br>
+                <button class="btn" onclick="analyzeImage()">🔍 Анализировать диаграмму</button>
+            </div>
+
+            <div id="analyzeLoading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Анализируем диаграмму... Это может занять 1-2 минуты при первом запуске</p>
+            </div>
+
+            <div id="analyzeResults" class="results" style="display: none;"></div>
+        </div>
+
+        <!-- Генерация диаграммы -->
+        <div id="generate-tab" class="tab-content">
+            <h2 style="margin-bottom: 20px;">Опишите диаграмму текстом</h2>
+            
+            <textarea class="textarea-input" id="descriptionInput" placeholder="Например: Начало. Проверить условие X > 0. Если да, выполнить действие A. Если нет, выполнить действие B. Конец."></textarea>
+
+            <div class="options">
+                <div class="option-group">
+                    <label>Формат вывода:</label>
+                    <select id="outputFormat">
+                        <option value="both">Изображение + Код</option>
+                        <option value="image">Только изображение</option>
+                        <option value="code">Только код</option>
+                    </select>
+                </div>
+                <div class="option-group">
+                    <label>Тип диаграммы:</label>
+                    <select id="diagramType">
+                        <option value="flowchart">Блок-схема</option>
+                        <option value="sequence">Последовательность</option>
+                        <option value="graph">Граф</option>
+                    </select>
+                </div>
+                <div class="option-group">
+                    <label>Расположение:</label>
+                    <select id="layout">
+                        <option value="vertical">Вертикальное</option>
+                        <option value="horizontal">Горизонтальное</option>
+                        <option value="auto">Автоматическое</option>
+                    </select>
+                </div>
+            </div>
+
+            <button class="btn" onclick="generateDiagram()">✨ Сгенерировать диаграмму</button>
+
+            <div id="generateLoading" class="loading" style="display: none;">
+                <div class="spinner"></div>
+                <p>Генерируем диаграмму...</p>
+            </div>
+
+            <div id="generateResults" class="results" style="display: none;"></div>
+        </div>
+    </div>
+
+    <script>
+        let selectedFile = null;
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+            
+            event.target.classList.add('active');
+            document.getElementById(tab + '-tab').classList.add('active');
+        }
+
+        // Drag & Drop
+        const uploadArea = document.getElementById('uploadArea');
+        
+        uploadArea.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            uploadArea.classList.add('dragover');
+        });
+
+        uploadArea.addEventListener('dragleave', () => {
+            uploadArea.classList.remove('dragover');
+        });
+
+        uploadArea.addEventListener('drop', (e) => {
+            e.preventDefault();
+            uploadArea.classList.remove('dragover');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                handleFile(files[0]);
+            }
+        });
+
+        function handleFileSelect(event) {
+            const file = event.target.files[0];
+            if (file) {
+                handleFile(file);
+            }
+        }
+
+        function handleFile(file) {
+            if (!file.type.startsWith('image/')) {
+                alert('Пожалуйста, выберите изображение');
+                return;
+            }
+
+            if (file.size > 10 * 1024 * 1024) {
+                alert('Файл слишком большой. Максимальный размер: 10 MB');
+                return;
+            }
+
+            selectedFile = file;
+            
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById('previewImg').src = e.target.result;
+                document.getElementById('imagePreview').style.display = 'block';
+                document.getElementById('analyzeResults').style.display = 'none';
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function analyzeImage() {
+            if (!selectedFile) return;
+
+            document.getElementById('analyzeLoading').style.display = 'block';
+            document.getElementById('analyzeResults').style.display = 'none';
+
+            const formData = new FormData();
+            formData.append('image', selectedFile);
+
+            try {
+                const response = await fetch('/api/v1/analyze-mock', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayAnalyzeResults(data);
+                } else {
+                    const errorMsg = data.message || data.error || JSON.stringify(data);
+                    displayError('analyzeResults', 'Ошибка при анализе: ' + errorMsg);
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                displayError('analyzeResults', 'Ошибка соединения: ' + error.message);
+            } finally {
+                document.getElementById('analyzeLoading').style.display = 'none';
+            }
+        }
+
+        function displayAnalyzeResults(data) {
+            console.log('API Response:', data);
+            const resultsDiv = document.getElementById('analyzeResults');
+            resultsDiv.style.display = 'block';
+
+            let html = '<div class="success">✅ Диаграмма успешно проанализирована!</div>';
+
+            // Тип диаграммы
+            html += '<div class="result-section">';
+            html += '<h3>� Тип диаграммы</h3>';
+            const diagramType = (data.metadata && data.metadata.flow_type) || 'Блок-схема';
+            html += '<p style="font-size: 1.2em; font-weight: 600; color: #667eea;">' + diagramType + '</p>';
+            html += '</div>';
+
+            // Таблица ролей/участников (если есть)
+            if (data.graph_representation && data.graph_representation.nodes) {
+                const roles = extractRoles(data.graph_representation.nodes);
+                if (roles.length > 0) {
+                    html += '<div class="result-section">';
+                    html += '<h3>� Роли и участники</h3>';
+                    html += '<table style="width: 100%; border-collapse: collapse; margin-top: 15px;">';
+                    html += '<thead><tr style="background: #667eea; color: white;">';
+                    html += '<th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Роль</th>';
+                    html += '<th style="padding: 12px; text-align: left; border: 1px solid #ddd;">Описание</th>';
+                    html += '</tr></thead><tbody>';
+                    
+                    roles.forEach((role, index) => {
+                        const bgColor = index % 2 === 0 ? '#f8f9ff' : 'white';
+                        html += '<tr style="background: ' + bgColor + ';">';
+                        html += '<td style="padding: 12px; border: 1px solid #ddd; font-weight: 600;">' + role.name + '</td>';
+                        html += '<td style="padding: 12px; border: 1px solid #ddd;">' + role.description + '</td>';
+                        html += '</tr>';
+                    });
+                    
+                    html += '</tbody></table>';
+                    html += '</div>';
+                }
+            }
+
+            // Последовательность действий
+            html += '<div class="result-section">';
+            html += '<h3>📋 Последовательность действий</h3>';
+            
+            if (data.graph_representation && data.graph_representation.nodes && data.graph_representation.edges) {
+                const sequence = buildSequence(data.graph_representation.nodes, data.graph_representation.edges);
+                html += '<ol style="line-height: 2; font-size: 1.05em;">';
+                sequence.forEach(step => {
+                    html += '<li><strong>' + step.type + ':</strong> ' + step.label + '</li>';
+                });
+                html += '</ol>';
+            } else if (data.description) {
+                html += '<p style="line-height: 1.8;">' + data.description + '</p>';
+            }
+            
+            html += '</div>';
+
+            // Текстовое описание
+            if (data.description) {
+                html += '<div class="result-section">';
+                html += '<h3>📝 Полное описание</h3>';
+                html += '<p style="line-height: 1.8; white-space: pre-wrap;">' + data.description + '</p>';
+                html += '</div>';
+            }
+
+            // Метаданные
+            if (data.metadata) {
+                html += '<div class="result-section">';
+                html += '<h3>ℹ️ Информация об обработке</h3>';
+                html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">';
+                
+                if (data.metadata.processing_time !== undefined) {
+                    html += '<div><strong>Время обработки:</strong><br>' + data.metadata.processing_time.toFixed(2) + ' сек</div>';
+                }
+                if (data.metadata.num_detected_elements) {
+                    html += '<div><strong>Обнаружено элементов:</strong><br>' + data.metadata.num_detected_elements + '</div>';
+                }
+                if (data.graph_representation) {
+                    html += '<div><strong>Узлов в графе:</strong><br>' + data.graph_representation.nodes.length + '</div>';
+                    html += '<div><strong>Связей:</strong><br>' + data.graph_representation.edges.length + '</div>';
+                }
+                
+                html += '</div>';
+                html += '</div>';
+            }
+
+            resultsDiv.innerHTML = html;
+        }
+
+        function extractRoles(nodes) {
+            const roles = [];
+            const roleMap = new Map();
+            
+            nodes.forEach(node => {
+                if (node.type === 'actor' || node.type === 'participant' || node.type === 'swimlane') {
+                    if (!roleMap.has(node.label)) {
+                        roleMap.set(node.label, {
+                            name: node.label || node.id,
+                            description: node.description || 'Участник процесса'
+                        });
+                    }
+                }
+            });
+            
+            return Array.from(roleMap.values());
+        }
+
+        function buildSequence(nodes, edges) {
+            const sequence = [];
+            const nodeMap = new Map();
+            
+            nodes.forEach(node => {
+                nodeMap.set(node.id, node);
+            });
+            
+            // Найти начальный узел
+            const startNode = nodes.find(n => n.type === 'start' || n.type === 'begin') || nodes[0];
+            
+            if (!startNode) return sequence;
+            
+            const visited = new Set();
+            let currentNode = startNode;
+            
+            while (currentNode && sequence.length < 100) {
+                if (visited.has(currentNode.id)) break;
+                visited.add(currentNode.id);
+                
+                const typeMap = {
+                    'start': 'Начало',
+                    'end': 'Конец',
+                    'process': 'Действие',
+                    'decision': 'Условие',
+                    'data': 'Данные',
+                    'subprocess': 'Подпроцесс'
+                };
+                
+                sequence.push({
+                    type: typeMap[currentNode.type] || 'Шаг',
+                    label: currentNode.label || currentNode.id
+                });
+                
+                // Найти следующий узел
+                const nextEdge = edges.find(e => e.source === currentNode.id && !visited.has(e.target));
+                if (nextEdge) {
+                    currentNode = nodeMap.get(nextEdge.target);
+                } else {
+                    break;
+                }
+            }
+            
+            return sequence;
+        }
+
+        async function generateDiagram() {
+            const description = document.getElementById('descriptionInput').value.trim();
+            
+            if (!description) {
+                alert('Пожалуйста, введите описание диаграммы');
+                return;
+            }
+
+            document.getElementById('generateLoading').style.display = 'block';
+            document.getElementById('generateResults').style.display = 'none';
+
+            const requestData = {
+                description: description,
+                output_format: document.getElementById('outputFormat').value,
+                diagram_type: document.getElementById('diagramType').value,
+                layout: document.getElementById('layout').value
+            };
+
+            try {
+                const response = await fetch('/api/v1/generate-mock', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(requestData)
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    displayGenerateResults(data);
+                } else {
+                    displayError('generateResults', data.message || 'Ошибка при генерации');
+                }
+            } catch (error) {
+                displayError('generateResults', 'Ошибка соединения: ' + error.message);
+            } finally {
+                document.getElementById('generateLoading').style.display = 'none';
+            }
+        }
+
+        function displayGenerateResults(data) {
+            const resultsDiv = document.getElementById('generateResults');
+            resultsDiv.style.display = 'block';
+
+            let html = '<div class="success">✅ Диаграмма успешно сгенерирована!</div>';
+
+            // Изображение
+            if (data.diagram_image) {
+                html += '<div class="result-section">';
+                html += '<h3>🖼️ Изображение диаграммы</h3>';
+                html += '<img src="' + data.diagram_image + '" class="generated-image" alt="Generated Diagram" style="max-width: 100%; border: 1px solid #ddd; border-radius: 8px; padding: 10px; background: white;">';
+                html += '</div>';
+            }
+
+            // Код
+            if (data.diagram_code) {
+                html += '<div class="result-section">';
+                html += '<h3>💻 Код диаграммы</h3>';
+                html += '<div class="code-block"><pre>' + data.diagram_code + '</pre></div>';
+                html += '</div>';
+            }
+
+            // Описание
+            if (data.description) {
+                html += '<div class="result-section">';
+                html += '<h3>📝 Сгенерированное описание</h3>';
+                html += '<p style="line-height: 1.6;">' + data.description + '</p>';
+                html += '</div>';
+            }
+
+            // Метаданные
+            if (data.metadata) {
+                html += '<div class="result-section">';
+                html += '<h3>ℹ️ Информация</h3>';
+                if (data.metadata.processing_time !== undefined) {
+                    html += '<p><strong>Время обработки:</strong> ' + data.metadata.processing_time.toFixed(2) + ' сек</p>';
+                }
+                if (data.metadata.num_nodes) {
+                    html += '<p><strong>Узлов в графе:</strong> ' + data.metadata.num_nodes + '</p>';
+                }
+                if (data.metadata.num_edges) {
+                    html += '<p><strong>Связей в графе:</strong> ' + data.metadata.num_edges + '</p>';
+                }
+                html += '</div>';
+            }
+
+            resultsDiv.innerHTML = html;
+        }
+
+        function displayError(elementId, message) {
+            const element = document.getElementById(elementId);
+            element.style.display = 'block';
+            element.innerHTML = '<div class="error">❌ ' + message + '</div>';
+        }
+    </script>
+</body>
+</html>

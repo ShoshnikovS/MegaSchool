@@ -22,7 +22,15 @@ class GraphConstructor:
             
             for idx, bbox in enumerate(bboxes):
                 node_id = f"node_{idx}"
-                text = texts.get(idx, "")
+                text_obj = texts.get(idx, "")
+                
+                # Извлекаем текст из OCRResult если это объект
+                if hasattr(text_obj, 'text'):
+                    text = text_obj.text
+                elif isinstance(text_obj, str):
+                    text = text_obj
+                else:
+                    text = ""
                 
                 add_node(
                     graph,

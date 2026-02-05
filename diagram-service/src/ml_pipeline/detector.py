@@ -1,11 +1,11 @@
 import numpy as np
+import cv2
 from typing import List, Dict, Any, Optional
 from pathlib import Path
-import torch
 
 from src.core.logger import app_logger
 from src.core.config import settings
-from src.core.exceptions import DetectionError, ModelLoadError
+from src.core.exceptions import DetectionError
 
 
 class BoundingBox:
@@ -42,133 +42,120 @@ class BoundingBox:
 
 class DiagramDetector:
     def __init__(self, model_path: Optional[str] = None, confidence_threshold: Optional[float] = None):
-        self.model_path = model_path or str(settings.yolo_model_full_path)
         self.confidence_threshold = confidence_threshold or settings.confidence_threshold
-        self.device = settings.device
-        self.model = None
-        
-        app_logger.info(f"Initializing DiagramDetector with model={self.model_path}, device={self.device}")
-        self._load_model()
+        app_logger.info(f"Initializing DiagramDetector with OpenCV-based detection")
     
-    def _load_model(self):
+    def detect_diagram_elements(self, image: np.ndarray) -> List[BoundingBox]:
+        """Детекция элементов диаграмм с использованием OpenCV"""
         try:
-            from ultralytics import YOLO
+            app_logger.info(f"Detecting diagram elements in image of shape {image.shape}")
             
-            if not Path(self.model_path).exists():
-                app_logger.warning(f"Model file not found at {self.model_path}, downloading default YOLOv8n")
-                self.model = YOLO('yolov8n.pt')
+            # Конвертируем в grayscale
+            if len(image.shape) == 3:
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
             else:
-                self.model = YOLO(self.model_path)
+                gray = image.copy()
             
-            if self.device == 'cuda' and torch.cuda.is_available():
-                self.model.to('cuda')
-                app_logger.info("Model loaded on GPU")
-            else:
-                self.model.to('cpu')
-                app_logger.info("Model loaded on CPU")
+            # Применяем адаптивную бинаризацию для лучшего выделения элементов
+            binary = cv2.adaptiveThreshold(
+                gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
+                cv2.THRESH_BINARY_INV, 11, 2
+            )
             
-        except Exception as e:
-            app_logger.error(f"Failed to load YOLO model: {str(e)}", exc_info=True)
-            raise ModelLoadError(f"Failed to load detection model: {str(e)}")
-    
-    def detect(self, image: np.ndarray) -> List[BoundingBox]:
-        try:
-            app_logger.debug(f"Running detection on image of shape {image.shape}")
+            # Морфологические операции для очистки шума
+            kernel = np.ones((3, 3), np.uint8)
+            binary = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel, iterations=2)
+            binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel, iterations=1)
             
-            results = self.model(image, conf=self.confidence_threshold, verbose=False)
+            # Поиск контуров
+            contours, _ = cv2.findContours(binary, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            
+            app_logger.info(f"Found {len(contours)} contours")
             
             bboxes = []
-            for result in results:
-                boxes = result.boxes
-                
-                for i in range(len(boxes)):
-                    box = boxes.xyxy[i].cpu().numpy()
-                    conf = float(boxes.conf[i].cpu().numpy())
-                    cls = int(boxes.cls[i].cpu().numpy())
-                    
-                    class_name = result.names[cls] if hasattr(result, 'names') else f"class_{cls}"
-                    
-                    bbox = BoundingBox(
-                        x1=float(box[0]),
-                        y1=float(box[1]),
-                        x2=float(box[2]),
-                        y2=float(box[3]),
-                        confidence=conf,
-                        class_id=cls,
-                        class_name=class_name
-                    )
-                    bboxes.append(bbox)
+            min_area = 800  # Минимальная площадь элемента
+            max_area = image.shape[0] * image.shape[1] * 0.5  # Максимум 50% изображения
             
-            app_logger.info(f"Detected {len(bboxes)} objects")
+            for idx, contour in enumerate(contours):
+                area = cv2.contourArea(contour)
+                
+                # Фильтруем по площади
+                if area < min_area or area > max_area:
+                    continue
+                
+                # Получаем bounding box
+                x, y, w, h = cv2.boundingRect(contour)
+                
+                # Проверяем соотношение сторон (исключаем линии)
+                aspect_ratio = max(w, h) / (min(w, h) + 1)
+                if aspect_ratio > 15:  # Слишком вытянутый - это линия
+                    continue
+                
+                # Проверяем что это не весь фон
+                if w > image.shape[1] * 0.9 or h > image.shape[0] * 0.9:
+                    continue
+                
+                # Определяем тип элемента по форме
+                element_type = self._classify_by_shape(contour, w, h)
+                
+                bbox = BoundingBox(
+                    x1=float(x),
+                    y1=float(y),
+                    x2=float(x + w),
+                    y2=float(y + h),
+                    confidence=0.95,
+                    class_id=idx,
+                    class_name=element_type
+                )
+                
+                bboxes.append(bbox)
+            
+            # Сортируем по позиции (сверху вниз, слева направо)
+            bboxes.sort(key=lambda b: (b.center_y, b.center_x))
+            
+            app_logger.info(f"Detected {len(bboxes)} diagram elements")
             return bboxes
             
         except Exception as e:
-            app_logger.error(f"Detection failed: {str(e)}", exc_info=True)
-            raise DetectionError(f"Object detection failed: {str(e)}")
+            app_logger.error(f"Error detecting diagram elements: {str(e)}", exc_info=True)
+            raise DetectionError(f"Failed to detect diagram elements: {str(e)}")
     
-    def detect_diagram_elements(self, image: np.ndarray) -> List[BoundingBox]:
-        bboxes = self.detect(image)
+    def _classify_by_shape(self, contour, width: float, height: float) -> str:
+        """Классификация элемента по форме контура"""
         
-        diagram_elements = []
-        for bbox in bboxes:
-            element_type = self._classify_element_by_shape(bbox)
-            bbox.class_name = element_type
-            diagram_elements.append(bbox)
+        # Аппроксимация контура
+        epsilon = 0.02 * cv2.arcLength(contour, True)
+        approx = cv2.approxPolyDP(contour, epsilon, True)
+        num_vertices = len(approx)
         
-        diagram_elements.sort(key=lambda b: (b.center_y, b.center_x))
+        # Соотношение сторон
+        aspect_ratio = width / height if height > 0 else 1.0
         
-        app_logger.info(f"Classified {len(diagram_elements)} diagram elements")
-        return diagram_elements
-    
-    def _classify_element_by_shape(self, bbox: BoundingBox) -> str:
-        aspect_ratio = bbox.width / bbox.height if bbox.height > 0 else 1.0
-        
-        if 0.8 <= aspect_ratio <= 1.2:
-            if bbox.area < 5000:
-                return "decision"
+        # Определяем тип по количеству вершин и соотношению сторон
+        if num_vertices == 4:
+            # Прямоугольник или ромб
+            if 0.7 <= aspect_ratio <= 1.3:
+                # Квадратный элемент - может быть ромбом (decision) или процессом
+                # Проверяем угол поворота
+                rect = cv2.minAreaRect(contour)
+                angle = rect[2]
+                if abs(angle - 45) < 15 or abs(angle + 45) < 15:
+                    return "decision"  # Ромб
+                else:
+                    return "process"  # Квадрат
             else:
-                return "process"
-        elif aspect_ratio > 1.5:
-            return "process"
-        elif aspect_ratio < 0.7:
-            return "data"
+                return "process"  # Прямоугольник
+        
+        elif num_vertices > 8:
+            # Много вершин - вероятно овал/круг
+            if 0.8 <= aspect_ratio <= 1.2:
+                return "start"  # Круг - начало/конец
+            else:
+                return "data"  # Овал - данные
+        
+        elif num_vertices == 3:
+            return "decision"  # Треугольник
+        
         else:
+            # По умолчанию - процесс
             return "process"
-    
-    def filter_by_confidence(self, bboxes: List[BoundingBox], min_confidence: float) -> List[BoundingBox]:
-        filtered = [bbox for bbox in bboxes if bbox.confidence >= min_confidence]
-        app_logger.debug(f"Filtered {len(bboxes)} -> {len(filtered)} boxes by confidence >= {min_confidence}")
-        return filtered
-    
-    def non_max_suppression(self, bboxes: List[BoundingBox], iou_threshold: float = 0.5) -> List[BoundingBox]:
-        if not bboxes:
-            return []
-        
-        bboxes_sorted = sorted(bboxes, key=lambda b: b.confidence, reverse=True)
-        
-        keep = []
-        while bboxes_sorted:
-            current = bboxes_sorted.pop(0)
-            keep.append(current)
-            
-            bboxes_sorted = [
-                bbox for bbox in bboxes_sorted
-                if self._calculate_iou(current, bbox) < iou_threshold
-            ]
-        
-        app_logger.debug(f"NMS: {len(bboxes)} -> {len(keep)} boxes")
-        return keep
-    
-    def _calculate_iou(self, bbox1: BoundingBox, bbox2: BoundingBox) -> float:
-        x1 = max(bbox1.x1, bbox2.x1)
-        y1 = max(bbox1.y1, bbox2.y1)
-        x2 = min(bbox1.x2, bbox2.x2)
-        y2 = min(bbox1.y2, bbox2.y2)
-        
-        if x2 < x1 or y2 < y1:
-            return 0.0
-        
-        intersection = (x2 - x1) * (y2 - y1)
-        union = bbox1.area + bbox2.area - intersection
-        
-        return intersection / union if union > 0 else 0.0

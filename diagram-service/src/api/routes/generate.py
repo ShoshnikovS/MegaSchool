@@ -30,6 +30,8 @@ async def generate_diagram(request: GenerateRequest):
     app_logger.debug(f"Description: {request.description[:100]}...")
     
     try:
+        text_preprocessor, text_parser, visualizer, code_generator, formatter, template_engine = get_components()
+        
         preprocessed_text = text_preprocessor.preprocess(request.description)
         app_logger.info("Text preprocessed")
         

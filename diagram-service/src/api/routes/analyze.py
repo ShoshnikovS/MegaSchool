@@ -15,13 +15,29 @@ from src.postprocessing.template_engine import TemplateEngine
 
 router = APIRouter()
 
-preprocessor = ImagePreprocessor()
-detector = DiagramDetector()
-ocr = TextRecognizer()
-graph_constructor = GraphConstructor()
-semantic_interpreter = SemanticInterpreter()
-formatter = ResponseFormatter()
-template_engine = TemplateEngine()
+_preprocessor = None
+_detector = None
+_ocr = None
+_graph_constructor = None
+_semantic_interpreter = None
+_formatter = None
+_template_engine = None
+
+def get_components():
+    global _preprocessor, _detector, _ocr, _graph_constructor, _semantic_interpreter, _formatter, _template_engine
+    
+    if _preprocessor is None:
+        app_logger.info("Initializing ML components...")
+        _preprocessor = ImagePreprocessor()
+        _detector = DiagramDetector()
+        _ocr = TextRecognizer()
+        _graph_constructor = GraphConstructor()
+        _semantic_interpreter = SemanticInterpreter()
+        _formatter = ResponseFormatter()
+        _template_engine = TemplateEngine()
+        app_logger.info("ML components initialized successfully")
+    
+    return _preprocessor, _detector, _ocr, _graph_constructor, _semantic_interpreter, _formatter, _template_engine
 
 
 @router.post("/analyze", response_model=UnifiedResponse)
@@ -46,6 +62,8 @@ async def analyze_diagram(image: UploadFile = File(...)):
             )
         
         app_logger.info(f"Image size: {len(image_bytes)} bytes")
+        
+        preprocessor, detector, ocr, graph_constructor, semantic_interpreter, formatter, template_engine = get_components()
         
         image_array = bytes_to_numpy(image_bytes)
         app_logger.debug(f"Converted to numpy array: {image_array.shape}")
